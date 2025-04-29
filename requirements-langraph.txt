@@ -1,0 +1,4 @@
+# 开发环境额外依赖
+-r requirements.txt  # 包含基础依赖
+langgraph
+langchain_openai
