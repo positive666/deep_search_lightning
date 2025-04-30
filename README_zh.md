@@ -17,9 +17,9 @@
 - 提供纯净源码便于集成
 - 提供MCP服务
 ## 📺 演示视频
-[点击查看演示视频](assets/demo.mp4)  
+![点击查看演示视频](assets/demo.mp4)  
 ## 🔄 流程图
-[Piepline](assets/piepline.png) 
+![Piepline](assets/piepline.png) 
 
 
 ## ✨ Why deepsearch_lightning?
