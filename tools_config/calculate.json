@@ -1,0 +1,12 @@
+{
+    "name": "calculator",
+    "description": "简单计算器",
+    "module": "src.tools.calculate",
+    "function": "calculate",
+    "parameters": {
+        "expression": {
+            "type": "string",
+            "description": "数学表达式"
+        }
+    }
+}

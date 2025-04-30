@@ -1,0 +1,16 @@
+{
+  "awp_inspect": {
+    "command": "python",
+    "args": [
+      "./tools/awp_inspect.py"
+    ],
+    "transport": "stdio"
+  },
+  "get_current_time": {
+    "command": "python",
+    "args": [
+      "./tools/mcp_server_time.py"
+    ],
+    "transport": "stdio"
+  }
+}

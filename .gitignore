@@ -16,6 +16,8 @@ build/
 *.egg-info/
 *.pyc
 __pycache__/
+tools
+tools_cofig
 
 # 日志文件
 *.log

@@ -92,6 +92,10 @@ def bocha_parse_response(response):
                 ]
     return result
 
+
+mcp = FastMCP("web_search_tools", description="聚合多个搜索引擎的搜索结果")
+
+@mcp.tool()
 def bocha_search(
     query: str, count: int, api_key: str, filter_list: Optional[list[str]] = None
 ) -> list:
@@ -129,7 +133,7 @@ def bocha_search(
 
 
 # --- FastMCP 服务器设置 ---
-mcp = FastMCP("web_search_tools", description="聚合多个搜索引擎的搜索结果")
+
 
 # Bocha API Key
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY", "") # 替换为你的有效 Key

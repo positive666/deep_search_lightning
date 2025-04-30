@@ -16,7 +16,7 @@ load_dotenv()
 ## Memory Saver
 #memory = MemorySaver()
 # --- 配置 ---
-LLM_MODEL = os.getenv("MODEL_NAME", "deepseek-chat")
+LLM_MODEL =  os.getenv("MODEL_NAME")
 LLM_API_KEY = os.getenv("MODEL_API_KEY")
 LLM_BASE_URL = os.getenv("API_BASE_URL") # 可选
 
@@ -109,7 +109,7 @@ async def run_agent(query: str):
 # run
 if __name__ == "__main__":
     # user_query = input("请输入您的问题: ")
-    user_query = " 中国最好的大学是？" # 示例查询，适合聚合工具
+    user_query = " 搜一下 中国最好的大学是？" # 示例查询，适合聚合工具
     # user_query = "特斯拉今天的股价" # 示例查询，可能适合单个工具
     if user_query:
         print(f"Running agent for query: '{user_query}'")
