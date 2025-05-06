@@ -40,7 +40,7 @@ Deep Search Lighting provides:
 - Built-in MCP server support
 
 ## 📺 DEMO
-![demo](assets/demo.mp4)  
+![demo](assets/demo.gif)  
 ## 🔄 Piepline
 ![Piepline](assets/piepline.png) 
 
