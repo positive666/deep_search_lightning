@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 加载环境变量
-load_dotenv()
+load_dotenv(override=True)
 
 # 配置日志记录
 logging.basicConfig(level=logging.ERROR)
@@ -144,51 +144,50 @@ BOCHA_API_KEY = os.getenv("BOCHA_API_KEY", "") # 替换为你的有效 Key
 
 @mcp.tool()
 async def web_search_tools(
-    messages: List[Dict[str, Any]]=[],
+    context: str, query: str,
     search_engines = ['baidu', 'duckduckgo', 'bocha',"tavily"],
-    #max_results_per_engine: int = 3,
-   # max_final_results: int = 6
 ) -> Dict[str, Any]:
     """
     聚合多个搜索引擎 (Baidu, DuckDuckGo, Bocha) 的搜索结果。
     它会为每个关键词调用指定的搜索引擎，并将结果聚合在一起。
 
     Args:
-        messages (List[Dict[str, Any]]): 对话列表，如[{"role": "system", "content": '你是个网络检索助手'},{"role": "user", "content": '你好，请帮我搜索一下 "Python"'}, {"role": "assistant", "content": '好的，完成了'}]】
+        context (str): 搜索上下文，用于生成更准确的搜索结果。
+        query (str): 搜索关键词。
         search_engines (List[str]): 根据问题类型自动适配合适的搜索源，从默认搜索源中确定(至少2个,最多5个)，如 ["baidu", "duckduckgo"]。
       
     Returns:
         Dict[str, Any]: 包含 'results' (聚合后的结果列表) 或 'error' (字符串)的字典。
                         结果包含 'title', 'href', 'body', 和 'relevance_score'。
     """
-    load_dotenv()
+    load_dotenv(override=True)
     engine_config = {
     'baidu': SearchEngineConfig('baidu', max_results=int(os.getenv('BAIDU_MAX_RESULTS')), api_key=os.getenv('BAIDU_API_KEY'), enabled=os.getenv('BAIDU_ENABLED')== 'true'),
     'duckduckgo': SearchEngineConfig('duckduckgo', max_results=int(os.getenv('DUCKDUCKGO_MAX_RESULTS')),enabled=os.getenv('DUCKDUCKGO_ENABLED')== 'true'),
     'bocha': SearchEngineConfig('bocha', max_results=int(os.getenv('BOCHA_MAX_RESULTS')), api_key=os.getenv('BOCHA_API_KEY'), enabled=os.getenv('BOCHA_ENABLED')== 'true'),
     'tavily': SearchEngineConfig('tavily', max_results=int(os.getenv('TAVILY_MAX_RESULTS')), api_key=os.getenv('TAVILY_API_KEY'), enabled=os.getenv('TAVILY_ENABLED')== 'true'),
-}
+}   
+ 
     if search_engines is None or len(search_engines) < 2:
        # return {"error": "至少需要两个搜索引擎进行聚合搜索。"}
        search_engines = ['baidu', 'duckduckgo']
-    logger.info(f"use rearch_engines: {search_engines}")
+   
             
     web_llm = WebEnhancedLLM(model=os.getenv('MODEL_NAME'),
                                  search_engine=search_engines ,language='zh',
                                  api_key=os.getenv('MODEL_API_KEY'),
                                  api_base_url=os.getenv('API_BASE_URL'),
-                                
-                                depth=1,engine_config=engine_config,width=3,search_max_results=8)
+                                depth=1,engine_config=engine_config,width=3,search_max_results=5)
 
-    context = web_llm.format_context(messages[:-1]) #获取历史提问
+    #context = web_llm.format_context(messages[:-1]) #获取历史提问
     print("context:",context)
-    sub_tasks,_=web_llm.rewire_query(context,messages[-1]['content'],width=3)
+    sub_tasks,_=web_llm.rewire_query(context,query,width=3)
    # print('rewrite_query Done')
     search_results,ref= await web_llm.search_with_context(sub_tasks,enable_reflection=True) #默认聚合搜索&深度反思
-    logger.info("Search results: %s", search_results)
+    print("Search results: %s", search_results)
     return {"results": search_results, "references": ref}
     
-   
+
 
 
 if __name__ == "__main__":
