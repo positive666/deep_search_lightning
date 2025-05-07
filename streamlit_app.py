@@ -6,7 +6,7 @@ import asyncio
 from typing import AsyncGenerator, Dict, List
 
 # 初始化配置
-load_dotenv()
+load_dotenv(override=True)
 st.set_page_config(page_title="Web search with Any LLM ", layout="wide")
 
 class ChatApp:
@@ -147,7 +147,7 @@ class ChatApp:
         messages = [{"role": "system", "content": "你是一个有帮助的AI助手"}]
         messages.extend([{"role": msg["role"], "content": msg["content"]} 
                         for msg in st.session_state.messages[:-1]])
-        print(messages)
+        
         think_mode=False
         # 流式处理响应
         async for chunk in self.llm.web_search(query, context=messages, tools={'联网搜索'}):
@@ -159,7 +159,9 @@ class ChatApp:
             if hasattr(chunk.choices[0].delta, 'reasoning_content')and chunk.choices[0].delta.reasoning_content:
                         reasoning_content += chunk.choices[0].delta.reasoning_content
                         if not reasoning_emitted :
-                            start_label = "<--------思考与行动过程------>\n"
+                            start_label =  """<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+<b>思考与行动过程</b>
+</div>"""
                             yield f"{start_label}"
                             reasoning_emitted= True
                         md_content = f"{chunk.choices[0].delta.reasoning_content}"
@@ -167,7 +169,9 @@ class ChatApp:
             if chunk.choices[0].delta.content:
                         if chunk.choices[0].delta.content=="<think>":
                                 think_mode=True
-                                start_label = "<-------思考与行动过程----->\n"
+                                start_label =  """<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+<b>思考与行动过程</b>
+</div>"""
                                 yield f"{start_label}"
                         elif chunk.choices[0].delta.content == "</think>":
                                 think_mode = False
@@ -179,7 +183,9 @@ class ChatApp:
         web_search_mes=messages.copy()
         if keywords and action_name =='search':
             # 2.搜索
-            use_label=f"\n<----使用工具: 联网搜索----->"
+            use_label=f"""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+<b>使用工具:联网搜索</b>
+</div>"""
             yield f"{use_label}"
             search_results,ref= await self.llm.search_with_context(keywords,enable_reflection=True)
             
@@ -200,39 +206,73 @@ class ChatApp:
                     "role": "user",
                     "content": summary_prompt
                 }
-        think_mode=False
-        reasoning_emitted=False
-        async for chunk in self.llm.call_llm_stream(messages=web_search_mes): 
-                        if not hasattr(chunk, 'choices') or not chunk.choices:
-                                    continue
-                        elif hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content :
-                            reasoning_emitted=True
-                            html_content = chunk.choices[0].delta.reasoning_content 
-                            yield f"{json.dumps(html_content, ensure_ascii=False)}\n"
-                            
-                        elif hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content :
-                                if reasoning_emitted:
-                                    reasoning_emitted=False
-                                    think_mode = False
-                                    label="\n-----思考结束:准备输出结果-----"
-                                    yield f"{label}"
-                               
-                            
-                      
-                                elif chunk.choices[0].delta.content=="<think>":
-                                    think_mode=True
-                                    labelx="\n<-----根据收集到的信息，进行如下分析和梳理----->"
-                                    yield f"{labelx}\n"
-                            
-                                elif chunk.choices[0].delta.content == "</think>":
-                                    label="\n<-----思考结束:准备输出结果----->"
-                                    yield f"{label}"
-                                    think_mode = False
-                                elif  not think_mode  or not  reasoning_emitted:   
-                                     yield {"type": "full_results", "data": chunk.choices[0].delta.content}
-                     
+            think_mode=False
+            reasoning_emitted=False
+            async for chunk in self.llm.call_llm_stream(messages=web_search_mes): 
+                            if not hasattr(chunk, 'choices') or not chunk.choices:
+                                        continue
+                            elif hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content :
+                                reasoning_emitted=True
+                                html_content = chunk.choices[0].delta.reasoning_content 
+                                yield f"{json.dumps(html_content, ensure_ascii=False)}\n"
+                                
+                            elif hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content :
+                                    if reasoning_emitted:
+                                        reasoning_emitted=False
+                                        think_mode = False
+                                        label="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+    <b>思考结束：准备输出结果</b>
+    </div>"""
+                                        yield f"{label}"
+                                
+                                    elif chunk.choices[0].delta.content=="<think>":
+                                        think_mode=True
+                                        labelx="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+    <b>根据收集到的信息，进行如下分析和整理</b>
+    </div>"""
+                                        yield f"{labelx}\n"
+                                
+                                    elif chunk.choices[0].delta.content == "</think>":
+                                        label="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+    <b>思考结束：准备输出结果</b>
+    </div>"""
+                                        yield f"{label}"
+                                        think_mode = False
+                                    elif  not think_mode  or not  reasoning_emitted:   
+                                        yield {"type": "full_results", "data": chunk.choices[0].delta.content}
+        else:
+                think_mode=False
+                reasoning_emitted=False
+                messages.append({"role": "user", "content": query})
+                print('general chatL:L:',messages)
+                async for chunk in self.llm.call_llm_stream(messages=messages): 
                         
-
+                            if not hasattr(chunk, 'choices') or not chunk.choices:
+                                         continue
+                            elif hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content :
+                                reasoning_emitted=True
+                                html_content = chunk.choices[0].delta.reasoning_content 
+                                yield f"{json.dumps(html_content, ensure_ascii=False)}\n"
+                                
+                            elif hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content :
+                                    if reasoning_emitted:
+                                        reasoning_emitted=False
+                                        think_mode = False
+                                        label="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+    <b>思考结束：准备输出结果</b>
+    </div>"""
+                                        yield f"{label}"
+                           
+                                
+                                    elif chunk.choices[0].delta.content == "</think>":
+                                        label="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
+    <b>思考结束：准备输出结果</b>
+    </div>"""
+                                        yield f"{label}"
+                                        think_mode = False
+                                    elif  not think_mode  or not  reasoning_emitted:   
+                                        yield {"type": "full_results", "data": chunk.choices[0].delta.content}
+                         
     def run(self):
         """运行主循环"""
         if query := st.chat_input("输入您的问题..."):
@@ -256,9 +296,9 @@ class ChatApp:
                             full_response += chunk["data"] 
                        
                     else:
-                        #print(chunk)
+                        
                         full_response += chunk
-                    response_placeholder.markdown(full_response)
+                    response_placeholder.markdown(full_response,unsafe_allow_html=True)
                 print("save_content:", save_content)
                 # 添加完整响应到历史
                 st.session_state.messages.append({"role": "assistant", "content":  save_content})
