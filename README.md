@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/positive666-deep-search-lightning-badge.png)](https://mseep.ai/app/positive666-deep-search-lightning)
+
 # Deep Search Lighting
 
 
