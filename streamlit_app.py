@@ -140,16 +140,19 @@ class ChatApp:
         import json
         intent_content = ""
         reasoning_content = ""
+        think_mode = False  # 确保每次新查询都重置
+        reasoning_emitted = False  # 确保每次新查询都重置
         # 添加用户消息到历史
         st.session_state.messages.append({"role": "user", "content": query})
-        reasoning_emitted = False
+        
         # 准备对话上下文
         messages = [{"role": "system", "content": "你是一个有帮助的AI助手"}]
         messages.extend([{"role": msg["role"], "content": msg["content"]} 
                         for msg in st.session_state.messages[:-1]])
         
-        think_mode=False
+        
         # 流式处理响应
+        
         async for chunk in self.llm.web_search(query, context=messages, tools={'联网搜索'}):
             reasoning_content=''
             # 检查是否有 stop_reason 字段
@@ -171,17 +174,22 @@ class ChatApp:
                                 think_mode=True
                                 start_label =  """<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
 <b>思考与行动过程</b>
-</div>"""
+</div>"""                       
                                 yield f"{start_label}"
                         elif chunk.choices[0].delta.content == "</think>":
+                            
                                 think_mode = False
                         elif think_mode:  # 只有在think模式下的非标签内容才特殊处理
+                               #print(f"think mode: {chunk.choices[0].delta.content}"'---思考渲染内容')
                                 yield f"{chunk.choices[0].delta.content}"
-                        intent_content+= chunk.choices[0].delta.content
-        keywords,action_name=self.llm.extract_keywords_response(intent_content)
-        
+                        else:      
+                             #print( f"normal mode: {chunk.choices[0].delta.content}"'---普通渲染内容')
+                             intent_content+= chunk.choices[0].delta.content
+          
+        action_name,keywords=self.llm.contains_web_search_instruction(intent_content)
+        print(f"action_name: {action_name}",f"keywords: {keywords}")
         web_search_mes=messages.copy()
-        if keywords and action_name =='search':
+        if keywords and action_name:
             # 2.搜索
             use_label=f"""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
 <b>使用工具:联网搜索</b>
@@ -191,7 +199,7 @@ class ChatApp:
             
             # 3.生成搜索结果的总结提示        
             summary_prompt = self.llm.get_summary_prompt(keywords,search_results)
-            
+        
             # 简化搜索结果展示
             search_results_display = ""
             for i, result in enumerate(search_results, 1):
@@ -200,7 +208,7 @@ class ChatApp:
 🔗 {result.get('href', '')}\n
 """
             yield search_results_display
-            print('搜索结果:',search_results)
+
             web_search_mes=messages[-2:].copy() if len(messages) >2 else messages.copy()
             web_search_mes[-1]={
                     "role": "user",
@@ -226,6 +234,7 @@ class ChatApp:
                                         yield f"{label}"
                                 
                                     elif chunk.choices[0].delta.content=="<think>":
+
                                         think_mode=True
                                         labelx="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
     <b>根据收集到的信息，进行如下分析和整理</b>
@@ -233,6 +242,7 @@ class ChatApp:
                                         yield f"{labelx}\n"
                                 
                                     elif chunk.choices[0].delta.content == "</think>":
+                                      
                                         label="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
     <b>思考结束：准备输出结果</b>
     </div>"""
@@ -244,7 +254,7 @@ class ChatApp:
                 think_mode=False
                 reasoning_emitted=False
                 messages.append({"role": "user", "content": query})
-                print('general chatL:L:',messages)
+             
                 async for chunk in self.llm.call_llm_stream(messages=messages): 
                         
                             if not hasattr(chunk, 'choices') or not chunk.choices:
@@ -263,7 +273,8 @@ class ChatApp:
     </div>"""
                                         yield f"{label}"
                            
-                                
+                                    elif chunk.choices[0].delta.content == "<think>":
+                                        yield "\n"
                                     elif chunk.choices[0].delta.content == "</think>":
                                         label="""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
     <b>思考结束：准备输出结果</b>
@@ -291,7 +302,7 @@ class ChatApp:
                     #full_response += chunk
                     if isinstance(chunk, dict):
                         if chunk.get("type") == "full_results":
-                            print(chunk["data"])
+                            
                             save_content += chunk["data"]  # 保存完整结果
                             full_response += chunk["data"] 
                        
@@ -299,7 +310,7 @@ class ChatApp:
                         
                         full_response += chunk
                     response_placeholder.markdown(full_response,unsafe_allow_html=True)
-                print("save_content:", save_content)
+                #print("save_content:", save_content)
                 # 添加完整响应到历史
                 st.session_state.messages.append({"role": "assistant", "content":  save_content})
             
