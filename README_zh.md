@@ -1,9 +1,9 @@
-# Deep Search Lighting
+# Deep Search Lightning
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
 
-一个轻量的、纯净的大模型联网深度搜索方案，支持多种搜索引擎聚合搜索、深度反思和结果评估。介于联网搜索和DeepResearch之间的平衡方案,提供无三方框架的实现，便于开发人员快速集成。
+一个轻量的、纯净的大模型联网深度搜索方案，支持多种搜索引擎聚合搜索、深度反思和结果评估。介于联网搜索和DeepResearch之间的平衡方案,提供无三方框架的实现，便于开发人员快速集成,注意的是联网搜索和DeePresearch在应用场景下有明确的区别：联网搜索因为集成到聊天系统中，往往需要意图识别。
 
 ## ✨ Features
 
