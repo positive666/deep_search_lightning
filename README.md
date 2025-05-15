@@ -1,6 +1,6 @@
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/positive666-deep-search-lightning-badge.png)](https://mseep.ai/app/positive666-deep-search-lightning)
 
-# Deep Search Lighting
+# Deep Search Lightning
 
 
 [![中文文档](https://img.shields.io/badge/Docs-中文-blue)](README_zh.md)
