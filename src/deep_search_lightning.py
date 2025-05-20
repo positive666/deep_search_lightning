@@ -10,6 +10,7 @@ import re
 from .llm_base import LLMBase,AsyncOpenAI,OpenAI
 from .web_search import bocha_search, baidu_search,search_tavily,duckduckgo_search
 from bs4 import BeautifulSoup
+from .prompt import PromptManager
 # 定义Web搜索工具
 # 配置日志
 logging.basicConfig(
@@ -68,7 +69,7 @@ class WebSearchTool:
         self.max_results = self.SUPPORTED_ENGINES[search_engine].max_results
         self.last_request_time = 0
         self.min_request_interval = 2  # 最小请求间隔(秒)
-        
+    
     async def _rate_limit(self):
         """请求限速控制"""
         elapsed = time.time() - self.last_request_time
@@ -261,6 +262,7 @@ class WebSearchTool:
             else:
                 logger.warning(f"Invalid search result format: {result}")
         return "\n".join(formatted)
+TOOLS='联网搜索'
 
 
 class WebEnhancedLLM(LLMBase):
@@ -273,18 +275,28 @@ class WebEnhancedLLM(LLMBase):
             'tavily': SearchEngineConfig('tavily', max_results=5, api_key="default_tavily_key")
         }
         # 合并用户配置
+        
         self.engine_configs = {**default_configs, **(engine_config or {})}
          # 确保search_engine只包含启用的引擎
         self.search_engine = [engine for engine in search_engine 
                            if self.engine_configs.get(engine, {}).enabled]
        
-        print(f"search_engine: {self.search_engine}")
+        #print(f"search_engine: {self.search_engine}")
         self.search_tool =WebSearchTool(search_engine=self.search_engine[0],
         engine_config=self.engine_configs)
         self.language = "中文" if language in ['zh', 'zh-CN', 'zh-TW', '中文','chinese'] else '英文'
         self.supported_engines = self.search_engine if self.search_engine else self.search_tool.get_supported_engines()
         self.depth=depth
         self.width=width
+        
+         # 添加LOGO配置
+        self.ENGINE_LOGOS = {
+            engine: f'assets/{engine}.png'
+            for engine in ['baidu', 'duckduckgo', 'bocha', 'tavily']
+        }
+        
+       
+        
          # 初始化客户端
         self.client = OpenAI(
             api_key=api_key,
@@ -299,42 +311,96 @@ class WebEnhancedLLM(LLMBase):
             max_retries=0,
             timeout=60
         )
-        self.intent_prompt = """作为专业的网络检索助手，首先对用户请求进行理解分析：
+         # 初始化PromptManager
+        self.prompt_manager = PromptManager(model_name=self.model)
+        self.intent_prompt = """作为专业的网络检索助手，首先对用户输入进行分析并考虑是否启动联网搜索进行回答：
 ### 输入分析
 
-1. 现在时间：
-{current_time}
-2. 历史对话:
-{context}
-3. 当前问题:
-"{query}"
+1. 当前时间：{current_time}  
+2. 历史对话（最近3轮）：{context}  
+3. 当前问题："{query}" 
 
-### 任务处理流程
-1. 遵循工具规则:
-   - 结合历史对话和当前问题和时间分析输入后，把用户需求改成高质量查询，启动联网搜索，获取实时信息。
-   - 禁止使用联网搜索的情况：
-    * 问候语(如"你好"、"早上好"、"再见")
-    * 闲聊内容(如"你叫什么"、"你会什么")
-    * 指令不明确(如"帮个忙"、"查一下")
+### 决策规则
+• 结合历史对话和当前问题和时间分析输入后，参考是否存在禁止联网情况：如果命中，直接禁止联网；否则，默认开启联网搜索  
+### 禁止联网搜索启用的情况
+<禁止联网>
+• **闲聊/问候语**  
+  - 如"你好"、"在吗"、"谢谢"、"你会啥"、"你是谁"  
+• **主观/观点类问题**  
+  - 如"你觉得...？"、"你喜欢...吗？"
+• **重复问题（历史已回答）**  
+  - 检查最近3轮对话是否已回答  
+• **简单计算/单位换算**  
+  - 如"3+5等于多少？"、"1英里是多少公里？"  
+• **常识性问题（无需最新数据）**  
+  - 如"水的沸点是多少？"、"中国首都是哪里？"  
+• **命令/控制类请求**  
+  - 如"清空聊天记录"、"切换到英文模式"  
+• **能力/功能询问**  
+  - 如"你能做什么？"、"你有什么功能？"
+</禁止联网>  
 
-2. 搜索任务生成要求:
-   - 结合上下文分析问题，拆解生成{generate_num}个任务
-   - 每个任务必须:
-     * 保留原始问题核心实体
-     * 明确限定时间/空间/类型范围
-   - 每个任务之间必须存在:
-     * 时间递进(如过去/现在/未来)
-     * 或空间递进(如全球/国家/地区)
-     * 或概念细化(如整体/部分)
-   - 选择工具执行完成任务
+### 任务生成规范
+1. 必须生成{generate_num}个多样化搜索的查询任务，丰富检索信息
+2. 每个任务必须:
+    * 保留原始问题核心实体
+    * 明确限定时间/空间/类型范围
+    * 时间递进(如过去/现在/未来)
+    * 或空间递进(如全球/国家/地区)
+    * 或概念细化(如整体/部分)
+### 搜索引擎选择指南
+为了匹配检索任务，请根据以下指南选择最合适的搜索引擎：
+{engine_guide}
+##  引擎选择
+{search_engine}
+### 输出格式（必须严格遵循）
+[动作]
+使用联网搜索工具|不使用联网搜索工具
+[选择引擎]（仅联网时生成）
+[引擎1,引擎2]  # 必须使用此格式
+[搜索任务]（仅联网时生成）  
+• 任务1: "标准化查询任务1" #[类型:范围]
+• 任务2: "标准化查询任务2" #[类型:范围]
+• 任务3: "标准化查询任务3" #[类型:范围]
 
-### 输出规范
-<!--
-tools_type: "search" | "no select search "
-sub_tasks: ["改写的查询任务1", "查询任务2", "查询任务3"]
--->
-请用{language}回答，严格按照规范输出，不要额外的解释。
+请用{language}回答，注意：不要添加任何额外解释，严格按照格式输出
 """
+#         self.intent_prompt = """作为专业的网络检索助手，首先对用户请求进行理解分析并考虑是否启动联网搜索：
+# ### 输入分析
+
+# 1. 现在时间：
+# {current_time}
+# 2. 历史对话:
+# {context}
+# 3. 当前问题:
+# "{query}"
+
+# ### 任务处理流程
+# 1. 工具调用规则:
+#    - 当确定调用联网搜索时候，结合历史对话和当前问题和时间分析输入后，把用户需求改成高质量查询。
+#    - 禁止使用联网搜索的情况：
+#     * 问候语(如"你好"、"早上好"、"再见")
+#     * 闲聊内容(如"你叫什么"、"你会什么")
+#     * 指令不明确(如"帮个忙"、"查一下")
+
+# 2. 搜索任务生成要求:
+#    - 结合上下文分析问题，拆解生成{generate_num}个任务
+#    - 每个任务必须:
+#      * 保留原始问题核心实体
+#      * 明确限定时间/空间/类型范围
+#    - 每个任务之间必须存在:
+#      * 时间递进(如过去/现在/未来)
+#      * 或空间递进(如全球/国家/地区)
+#      * 或概念细化(如整体/部分)
+#    - 选择工具执行完成任务
+
+# ### 输出格式规范
+# <!--
+# tools_type: "search" | "no select search "
+# sub_tasks: ["改写的查询任务1", "查询任务2", "查询任务3"]
+# -->
+# 请用{language}回答，严格按照规范输出，不要额外的解释。
+# """
 #         self.intent_prompt =  """作为一个专业的人工智能体，擅长利用各种工具解决问题，当前时间:{current_time}，用户当前问题："{query}"，历史上下文："{context}"，可用工具：{tools}，为了更好回答用户问题：
 # ### 工具选择规则：
 #     1. 基于用户的查询，使用"联网搜索"获取信息
@@ -358,25 +424,25 @@ sub_tasks: ["改写的查询任务1", "查询任务2", "查询任务3"]
 #         tools_type: "search"
 #         sub_tasks: ["特斯拉最新财报","特斯拉2024Q3财报摘要", "特斯拉最新股价", "特斯拉CEO财报说明会"] -->
 #         """
-#         self.rewrite_prompt= """作为查询优化助手，你需要根据以下对话历史和当前问题，生成{generate_num}个语义完整的子问题。
+        self.rewrite_prompt= """作为查询优化助手，你需要根据以下对话历史和当前问题，生成{generate_num}个语义完整的子问题。
         
-# ### 对话历史:
-# {history}
+### 对话历史:
+{history}
 
-# ### 当前问题:
-# {query}
+### 当前问题:
+{query}
 
-# ### 生成要求:
-# 1. 每个子问题必须包含原始问题中的关键实体
-# 2. 子问题之间应有逻辑递进关系
-# 3. 保持专业语气，避免口语化表达
-# 4. 确保每个子问题都能独立回答
+### 生成要求:
+1. 每个子问题必须包含原始问题中的关键实体
+2. 子问题之间应有逻辑递进关系
+3. 保持专业语气，避免口语化表达
+4. 确保每个子问题都能独立回答
 
-# ### 输出格式:
-# <!--
-# sub_tasks: ["问题1", "问题2", "问题3"]
-# -->
-# """
+### 输出格式:
+<!--
+sub_tasks: ["问题1", "问题2", "问题3"]
+-->
+"""
         self.summary_prompt = """As a professional web research analyst, you are summarizing search results for the following sub-tasks: {sub_tasks}. Current date: {current_time}.
 
 ### Search Results:
@@ -428,6 +494,26 @@ Note: Use neutral language and maintain academic tone. All claims must be source
 # 参考资料：
 # {search_results}
 # """
+    def _generate_engine_guide(self):
+        """获取当前可用搜索引擎的选择指南"""
+        engine_descriptions = {
+            'baidu': '适合中文内容、国内信息查询',
+            'bocha': '适合学术论文、技术文档、生活娱乐等搜索',
+            'duckduckgo': '国外的搜索引擎，适合英文内容、国际信息查询',
+            'tavily': '适合实时新闻、最新资讯查询',
+#'dazhong':"餐饮美食、旅游、购物等生活服务查询", 
+        }
+        
+        des="\n".join(
+            f"• **{engine.capitalize()}**: {engine_descriptions[engine]}"
+            for engine in self.search_engine
+            if engine in engine_descriptions
+        )
+        #print('des :',des)
+        return des
+    def get_engine_logo(self, engine_name: str) -> str:
+            """获取搜索引擎的Logo路径"""
+            return self.ENGINE_LOGOS.get(engine_name.lower(), "")
     def _get_tool_description(self, tool):
         """多语言工具描述"""
         
@@ -532,17 +618,77 @@ Note: Use neutral language and maintain academic tone. All claims must be source
                 })
                 
         return results
+    
+    def contains_web_search_instruction(self, text: str) -> tuple[bool, list]:
+        """检查文本中是否包含联网搜索指令
+        
+        Args:
+            text: 要检查的文本内容
+            
+        Returns:
+            tuple: (是否使用搜索工具, 查询任务列表)
+        """
+        import re
+        # 匹配是否使用搜索工具
+        positive_pattern = r'\[动作\]\s*使用联网搜索工具'
+        negative_patterns = [
+            r'\[动作\]\s*不使用联网搜索工具',
+            r'不使用联网搜索',
+            r'不要用联网搜索',
+            r'禁止联网搜索',
+            r'无需联网搜索',
+            r'不必联网搜索',
+            r'不用联网搜索',
+            r'禁止使用联网搜索',
+            r'无需使用联网搜索'
+        ]
+    
+    # 检查是否有任何否定表达
+        # 检查是否有明确的"使用"标记
+        use_tool = bool(re.search(positive_pattern, text))
+        # 如果有任何否定表达，则强制返回False
+        if any(re.search(pattern, text) for pattern in negative_patterns):
+            use_tool = False
+        else:
+            use_tool = True
+        engine_pattern = r'\[选择引擎\]\s*(?:\[([^\]]+)\]|([^\n]+))'
+        engine_match = re.search(engine_pattern, text)
+        engines = []
+        if engine_match:
+        # 优先尝试第一种格式
+            engines_str = engine_match.group(1) or engine_match.group(2)
+            try:
+                engines = json.loads(engines_str.replace("'", '"')) if engine_match.group(1) else [e.strip() for e in engines_str.split(',')]
+            except json.JSONDecodeError:
+                # 处理非JSON格式的引擎列表
+                engines = [e.strip().strip("'\"") for e in engines_str.split(',')]
+        # 提取查询任务
+        tasks = self.extract_query_tasks(text)  # 现在作为实例方法调用
+       
+        return use_tool, tasks, engines
 
+    def extract_query_tasks(self, text: str) -> list:
+        """从文本中提取查询任务"""
+        import re
+        #pattern = r'(?:\d+\.\s*|-\s*)查询任务\d+:\s*"?([^"\n]+)"?'
+        pattern =r'•\s*(?:任务\d+:\s*)?([^#\n]+?)\s*#\[[^\]]+\]'
+        return re.findall(pattern, text)
+    def get_prompt(self, name: str, variables: Dict[str, Any]) -> str:
+        """统一获取提示词的方法"""
+        return self.prompt_manager.get_prompt(name, variables)
     def get_intent_prompt(self, query, context, tools,width_num):
         """获取意图识别提示"""
         tools = "、".join([f"{t}({self._get_tool_description(t)})" for t in tools])
         logger.info(f"tools: {tools}")
-       
+          # 动态生成引擎选择部分
+        engine_guide = self._generate_engine_guide()
         return self.intent_prompt.format(
-            current_time=datetime.now(timezone.utc).strftime('%Y年%m月%d日 %H:%M'),#%B %d, %Y'
+            current_time=datetime.now(timezone.utc).strftime('%Y年%m月%d日 %H:%M'),
             query=query,
             context=context,
             tools=tools,generate_num=width_num,
+            engine_guide=engine_guide , # 新增参数
+            search_engine=self.search_engine,
             language=self.language
         )
     def get_rewrite_prompt(self, history, query,width_num):
@@ -703,13 +849,16 @@ Note: Use neutral language and maintain academic tone. All claims must be source
                 all_refs.extend(ref)
         
         return all_results, all_refs
-    async def search_with_context(self, search_keywords,enable_reflection=True,format=True,max_final_results=10)-> str: 
+    async def search_with_context(self, search_keywords,enable_reflection=True,format=True,max_final_results=10,enabled_engines=[])-> str: 
         """
         Perform search with context using multiple keywords
         """
         search_results=[]
-        enabled_engines = [e for e in self.supported_engines 
-                    if self.search_tool.SUPPORTED_ENGINES[e].enabled]
+        if not enabled_engines:
+           # enabled_engines = engines
+            enabled_engines = [e for e in self.supported_engines 
+                            if self.search_tool.SUPPORTED_ENGINES[e].enabled]
+        
         logger.info(f"Searching with multiple engines: {self.supported_engines},deep_search: {enable_reflection}")
         if not enabled_engines:
             logger.error("No enabled search engines available")
@@ -836,7 +985,7 @@ Note: Use neutral language and maintain academic tone. All claims must be source
         
         mes = [{"role": "user", "content": self.intent_prompt}]
         
-        async for chunk in self.call_llm_stream(messages=mes, temperature=0.1):
+        async for chunk in self.call_llm_stream(messages=mes, temperature=0):
             yield chunk
         
     def call_llm(self, prompt: str) -> tuple[str, str]:
