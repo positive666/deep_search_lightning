@@ -8,9 +8,18 @@ from typing import AsyncGenerator, Dict, List
 # 初始化配置
 load_dotenv(override=True)
 st.set_page_config(page_title="Web search with Any LLM ", layout="wide")
+# # 临时测试用绝对路径
+# 在process_query方法开头临时测试
 
+#logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'assets', f'baidu.png'))
+# print(f"Absolute logo path: {logo_path}")  # 检查路径是否正确
 class ChatApp:
     def __init__(self):
+        #assets_dir = os.path.join(os.path.dirname(__file__), 'assets')
+    #     self.ENGINE_LOGOS = {
+    #     engine: f'assets/{engine}.png'
+    #     for engine in ['baidu', 'duckduckgo', 'bocha', 'tavily']
+    # }
         self.config = self._load_config()
         self.llm = self._init_llm()
         self.setup_ui()
@@ -150,7 +159,13 @@ class ChatApp:
         messages.extend([{"role": msg["role"], "content": msg["content"]} 
                         for msg in st.session_state.messages[:-1]])
         
-        
+#         test_img = """
+# <div style="padding: 10px;">
+#     <img src="https://www.baidu.com/img/flexible/logo/pc/result.png" width="100">
+#     <p>测试图片显示</p>
+# </div>
+# """
+#         yield test_img  # 如果这个能显示，说明是路径问题
         # 流式处理响应
         
         async for chunk in self.llm.web_search(query, context=messages, tools={'联网搜索'}):
@@ -179,24 +194,40 @@ class ChatApp:
                         elif chunk.choices[0].delta.content == "</think>":
                             
                                 think_mode = False
-                        elif think_mode:  # 只有在think模式下的非标签内容才特殊处理
-                               #print(f"think mode: {chunk.choices[0].delta.content}"'---思考渲染内容')
+                        elif think_mode:  
                                 yield f"{chunk.choices[0].delta.content}"
                         else:      
-                             #print( f"normal mode: {chunk.choices[0].delta.content}"'---普通渲染内容')
                              intent_content+= chunk.choices[0].delta.content
           
-        action_name,keywords=self.llm.contains_web_search_instruction(intent_content)
+        action_name,keywords,engines=self.llm.contains_web_search_instruction(intent_content)
         print(f"action_name: {action_name}",f"keywords: {keywords}")
         web_search_mes=messages.copy()
         if keywords and action_name:
             # 2.搜索
+            engine_logos_html = ""
+            #print(  f"searching for {keywords} using {engines}")
+            if not isinstance(engines, list):
+                engines = [engines]
+            for engine in engines:
+                logo_path = self.llm.get_engine_logo(engine)
+                with open(logo_path, "rb") as f:
+                    logo_bytes = f.read()
+                import base64
+                logo_base64 = base64.b64encode(logo_bytes).decode()
+                engine_logos_html += f"<img src='data:image/png;base64,{logo_base64}' width='40' style='margin-right: 8px;'>"
+             
+                
             use_label=f"""<div style='color: #666; background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0;'>
-<b>使用工具:联网搜索</b>
+<b>使用工具:联网搜索</b>{engine_logos_html}
 </div>"""
-            yield f"{use_label}"
-            search_results,ref= await self.llm.search_with_context(keywords,enable_reflection=True)
-            
+            yield use_label
+             # 单独渲染logo部分
+    #         if engine_logos_html:
+    #             yield f"""<div style='margin: 10px 0;'>
+    # {engine_logos_html}
+    # </div>"""
+            search_results,ref= await self.llm.search_with_context(keywords,enable_reflection=True,enabled_engines=engines)
+           # yield f'{engine_logos_html if engine_logos_html else ""}'
             # 3.生成搜索结果的总结提示        
             summary_prompt = self.llm.get_summary_prompt(keywords,search_results)
         
